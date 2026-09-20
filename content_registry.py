@@ -24,6 +24,34 @@ class ContentRegistry(gl.Contract):
             "reason": parts[5] if len(parts) > 5 else "",
         }
 
+    # ------------------------------------------------------------------
+    # Enforces a single, unambiguous mapping between status and score
+    # range so a contradictory pair (e.g. PLAGIARIZED|5) can never be
+    # stored. Any status/score combination that doesn't fit a band is
+    # forced to ERROR|0 rather than silently accepted.
+    # ------------------------------------------------------------------
+    def _coerce_consistent(self, status: str, score_str: str):
+        status = (status or "").strip().upper()
+        try:
+            score = int("".join(c for c in score_str if c.isdigit()) or "0")
+        except ValueError:
+            score = 0
+        score = max(0, min(100, score))
+
+        bands = {
+            "ORIGINAL": (0, 19),
+            "DERIVATIVE": (20, 70),
+            "PLAGIARIZED": (71, 100),
+        }
+
+        if status in bands:
+            lo, hi = bands[status]
+            if lo <= score <= hi:
+                return status, score
+        # Anything inconsistent, unrecognized, or explicitly ERROR
+        # collapses to the same safe, unambiguous state.
+        return "ERROR", 0
+
     @gl.public.write
     def register_content(self, content_id: str, content_text: str, source_url: str) -> None:
         content_id = content_id.strip()
@@ -50,8 +78,11 @@ class ContentRegistry(gl.Contract):
     @gl.public.write
     def verify_originality(self, content_id: str) -> str:
         """
-        HANYA MENJALANKAN AI. Hasilnya di-return ke user (tidak disimpan).
-        User harus memanggil save_verification_result() setelahnya.
+        Runs the AI comparison under validator consensus AND persists the
+        agreed result directly to state in the same call. There is no
+        separate "save result" step, so nothing the caller supplies can
+        ever be written as the verdict — only the value every validator
+        independently reproduced and agreed on.
         """
         if content_id not in self.records:
             raise Exception("Content not registered")
@@ -128,46 +159,17 @@ PLAGIARIZED|85
             validator_result = evaluate_originality()
             return leader_result.calldata == validator_result
 
-        # Jalankan AI
-        result = gl.vm.run_nondet_unsafe(evaluate_originality, validator_fn)
-        
-        # Kembalikan hasil ke user, JANGAN simpan ke state
-        return result
+        # Jalankan AI di bawah konsensus validator
+        consensus_result = gl.vm.run_nondet_unsafe(evaluate_originality, validator_fn)
 
-    @gl.public.write
-    def save_verification_result(self, content_id: str, result: str) -> None:
-        """
-        Menyimpan hasil verifikasi secara MANUAL.
-        Hanya pemilik konten yang bisa menyimpan.
-        """
-        if content_id not in self.records:
-            raise Exception("Content not registered")
+        # Parse hasil konsensus (bukan input caller)
+        parts = consensus_result.split("|", 1)
+        raw_status = parts[0] if len(parts) > 0 else "ERROR"
+        raw_score = parts[1] if len(parts) > 1 else "0"
 
-        record = self._unpack(self.records[content_id])
-        sender = str(gl.message.sender_address)
-        
-        if record["owner"] != sender:
-            raise Exception("Only the owner can save verification result")
+        # Paksa konsistensi status <-> rentang skor sebelum disimpan
+        status, score_int = self._coerce_consistent(raw_status, raw_score)
 
-        # Parse hasil "STATUS|SCORE"
-        parts = result.split("|", 1)
-        if len(parts) == 2:
-            status, score_str = parts
-        else:
-            status, score_str = "ERROR", "0"
-
-        # Validasi input user (cegah input asal-asalan)
-        if status not in ("ORIGINAL", "DERIVATIVE", "PLAGIARIZED", "ERROR"):
-            status = "ERROR"
-        
-        try:
-            score_int = int(score_str)
-            if score_int < 0 or score_int > 100:
-                score_int = 0
-        except ValueError:
-            score_int = 0
-
-        # Generate reason
         if status == "ORIGINAL":
             reason = "Content appears unique. No significant matches found."
         elif status == "DERIVATIVE":
@@ -177,8 +179,8 @@ PLAGIARIZED|85
         else:
             reason = "Unable to verify originality due to an error."
 
-        # Simpan ke state
-        updated = self._pack(
+        # Simpan langsung hasil yang disepakati validator ke state
+        self.records[content_id] = self._pack(
             record["content_text"],
             record["source_url"],
             record["owner"],
@@ -186,7 +188,8 @@ PLAGIARIZED|85
             str(score_int),
             reason,
         )
-        self.records[content_id] = updated
+
+        return f"{status}|{score_int}"
 
     @gl.public.view
     def get_content(self, content_id: str) -> str:
