@@ -45,7 +45,7 @@ Contract deployed on GenLayer Studio:
 | Contract address | `0x94d073617455F440539b2EF3353B4712B5F83B8a` |
 | Explorer link | https://explorer-studio.genlayer.com/address/0x94d073617455F440539b2EF3353B4712B5F83B8a |
 | Deployed | Sep 19, 2026 |
-| Transactions | 7 finalized (100% success rate) |
+| Transactions | 3 finalized (100% success rate) |
 
 ## Tech Stack
 
