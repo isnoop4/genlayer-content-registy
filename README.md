@@ -35,17 +35,17 @@ comparison before consensus is reached.
 ## Live Demo
 
 Contract deployed on GenLayer Studio:
-[https://explorer-studio.genlayer.com/address/0x94d073617455F440539b2EF3353B4712B5F83B8a](https://explorer-studio.genlayer.com/address/0x94d073617455F440539b2EF3353B4712B5F83B8a)
+[https://explorer-studio.genlayer.com/address/0x499FC33acd9721599FeB3C470b8Ddd576D2F9a70](https://explorer-studio.genlayer.com/address0x499FC33acd9721599FeB3C470b8Ddd576D2F9a70)
 
 ## Contract Details
 
 | Field | Value |
 |---|---|
 | Network | GenLayer Studio (Studionet) |
-| Contract address | `0x94d073617455F440539b2EF3353B4712B5F83B8a` |
-| Explorer link | https://explorer-studio.genlayer.com/address/0x94d073617455F440539b2EF3353B4712B5F83B8a |
-| Deployed | Sep 19, 2026 |
-| Transactions | 3 finalized (100% success rate) |
+| Contract address | `0x499FC33acd9721599FeB3C470b8Ddd576D2F9a70` |
+| Explorer link | https://explorer-studio.genlayer.com/address/0x499FC33acd9721599FeB3C470b8Ddd576D2F9a70 |
+| Deployed | Sep 30, 2026 |
+| Transactions | 5 finalized (100% success rate) |
 
 ## Tech Stack
 
