@@ -4,17 +4,42 @@ from genlayer import *
 
 
 class ContentRegistry(gl.Contract):
-    # content_id -> "content_text|||source_url|||owner|||status|||score|||reason"
+    # content_id -> escaped "content_text|||source_url|||owner|||status|||score|||reason"
     records: TreeMap[str, str]
 
     def __init__(self):
         pass
 
+    # ------------------------------------------------------------------
+    # Escaping: every literal "\" becomes "\\" and every literal "|"
+    # becomes "\|". Because ALL raw pipes are escaped, the 3-char
+    # delimiter "|||" can never occur inside an escaped field value —
+    # so splitting the packed string on "|||" is safe even if
+    # content_text or source_url is crafted to contain "|||" verbatim.
+    # ------------------------------------------------------------------
+    def _escape(self, s: str) -> str:
+        return s.replace("\\", "\\\\").replace("|", "\\|")
+
+    def _unescape(self, s: str) -> str:
+        out = []
+        i = 0
+        while i < len(s):
+            c = s[i]
+            if c == "\\" and i + 1 < len(s):
+                out.append(s[i + 1])
+                i += 2
+            else:
+                out.append(c)
+                i += 1
+        return "".join(out)
+
     def _pack(self, content_text, source_url, owner, status, score, reason):
-        return f"{content_text}|||{source_url}|||{owner}|||{status}|||{score}|||{reason}"
+        fields = [content_text, source_url, owner, status, score, reason]
+        return "|||".join(self._escape(f) for f in fields)
 
     def _unpack(self, packed: str):
         parts = packed.split("|||")
+        parts = [self._unescape(p) for p in parts]
         return {
             "content_text": parts[0] if len(parts) > 0 else "",
             "source_url": parts[1] if len(parts) > 1 else "",
@@ -48,8 +73,6 @@ class ContentRegistry(gl.Contract):
             lo, hi = bands[status]
             if lo <= score <= hi:
                 return status, score
-        # Anything inconsistent, unrecognized, or explicitly ERROR
-        # collapses to the same safe, unambiguous state.
         return "ERROR", 0
 
     @gl.public.write
@@ -83,11 +106,20 @@ class ContentRegistry(gl.Contract):
         separate "save result" step, so nothing the caller supplies can
         ever be written as the verdict — only the value every validator
         independently reproduced and agreed on.
+
+        Only the stored owner of the content may trigger (re)verification,
+        so an arbitrary caller can no longer force a re-run that overwrites
+        an existing verdict.
         """
         if content_id not in self.records:
             raise Exception("Content not registered")
 
         record = self._unpack(self.records[content_id])
+
+        sender = str(gl.message.sender_address)
+        if record["owner"] != sender:
+            raise Exception("Only the content owner can trigger verification")
+
         content_text = record["content_text"]
         source_url = record["source_url"]
 
